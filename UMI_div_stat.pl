@@ -82,7 +82,7 @@ $key = join "_", ($cur_chr, $cur_start, $cur_end, $cur_strand, $cur_l, $cur_s);
 $clusters{$key} = [ @cur_cluster ]; 
 
 my %UMI_dist_cnt; 
-my ($total_pos, $uni_UMI_pos, $dist_1_pos);
+my ($total_pos, $uni_UMI_pos, $dist_1_pos) = (0) x 3;
 ## in each cluster, select UMI and output 
 foreach $key (sort keys %clusters) { 
   $total_pos ++; 
@@ -188,7 +188,7 @@ sub mismatch {
   for(my $i=0; $i<@aa; $i++) { 
     $ret ++ if($aa[$i] ne $ba[$i]); 
   }
-  print "$a\t$b\n@aa\t@ba\n" if($ret > 6);
+  #print "$a\t$b\n@aa\t@ba\n" if($ret > 6);
   return($ret); 
 }
 

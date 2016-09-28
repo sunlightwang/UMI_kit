@@ -30,22 +30,25 @@ my $debug_lvl = 0;
 #####################
 my $usage = "$0 [options] <in.bed.gz> <out.bed.gz>
 Options: 
-  --min-UMI-cnt     [default: 2]
+  --min-UMI-cnt     [default: 1]
   --fuzz-pos-dist   [default: 5]
   --max-merge-dist  [default: 2]
+  --add-num-to-UMI  [default: false]
   --help            [show this help & exit]
 \n";
 
 #### options
-my $min_UMI_cnt = 2; 
-my $discard_UMI_pct = 1;
+my $min_UMI_cnt = 1; 
 my $fuzz_pos_dist = 5; 
-my $major_UMI_rel_frac = 0.5; # larger than this value, should keep
-my $sub_major_UMI_rel_frac = 0.2; #below this value, basicall should kickout (dist+2); otherwise,dist+1 ## things inbetween, take care
 my $max_merge_node_dist = 2;  #dist between nodes, if <= this value then nodes can be merged
+my $add_no_to_UMI = 0; # add a uniq number to UMI
 my $help = 0; 
+## in-house
+my $major_UMI_rel_frac = 0.5; # larger than this value, should keep (dist+=inf)
+my $sub_major_UMI_rel_frac = 0.2; # larger than this value, should have more chance to keep (dist+=1)
+my $remove_UMI_mean_frac = 0.01; # lower than this value, should be removed #TODO 
 #################
-GetOptions ('min-UMI-cnt=i' => \$min_UMI_cnt, 'fuzz-pos-dist' => \$fuzz_pos_dist, 'max-merge-dist' => \$max_merge_node_dist, 'help' => \$help) || die $usage;
+GetOptions ('min-UMI-cnt=i' => \$min_UMI_cnt, 'fuzz-pos-dist=i' => \$fuzz_pos_dist, 'max-merge-dist=i' => \$max_merge_node_dist, 'add-num-to-UMI' => \$add_no_to_UMI, 'help' => \$help) || die $usage;
 my $discard_UMI_cnt = $min_UMI_cnt - 1;
 
 $help && die $usage;
@@ -95,15 +98,16 @@ foreach $key (sort { versioncmp($a, $b) } keys %clusters) {
   print STDERR $key."\n" if($debug_lvl > 1); 
   #print join "\n", @{$clusters{$key}};
   #print "\n\n";
-  my @output = @{&parse_each_cluster($clusters{$key})};
+  my @output = sort { versioncmp($a, $b) }  @{&parse_each_cluster($clusters{$key})};
   my @k_a = split /_/, $key; 
   for(my $i=0; $i<@output; $i++) { 
     print STDERR $output[$i], "\n" if($debug_lvl > 1);
     my @a = split /\t/, $output[$i]; 
     next unless($a[4] > $discard_UMI_cnt); 
     $n++;
+    $a[2] = $a[2].":".$n if($add_no_to_UMI);
     if($a[3] eq "0") { 
-      print $OUT join "\t", ($k_a[0], $a[0], $a[1], $a[2].":".$n, $a[4], $k_a[3], $a[0], $a[1], "0", "1", $a[1]-$a[0], "0");
+      print $OUT join "\t", ($k_a[0], $a[0], $a[1], $a[2], $a[4], $k_a[3], $a[0], $a[1], "0", "1", $a[1]-$a[0], "0");
     } else {
       my @ba = split /,/, $a[3]; 
       my @b = ($a[0], @ba, $a[1]);
@@ -114,7 +118,7 @@ foreach $key (sort { versioncmp($a, $b) } keys %clusters) {
       }
       my $s_s = join ",", @s;
       my $l_s = join ",", @l;
-      print $OUT join "\t", ($k_a[0], $a[0], $a[1], $a[2].":".$n, $a[4], $k_a[3], $a[0], $a[1], "0", ($#b+1)/2, $l_s, $s_s);
+      print $OUT join "\t", ($k_a[0], $a[0], $a[1], $a[2], $a[4], $k_a[3], $a[0], $a[1], "0", ($#b+1)/2, $l_s, $s_s);
     }
     print $OUT "\n";
   }
@@ -126,7 +130,7 @@ undef $OUT;
 ###########################
 sub parse_each_cluster { 
   my @lines = @{$_[0]};
-  my %cluster_hash; 
+  my %UMI_cnt; 
   my $junc_pos;
   foreach my $l (@lines) { 
     my @a = split "\t", $l;
@@ -144,19 +148,21 @@ sub parse_each_cluster {
     }
     my @UMI = ($a[1],$a[2],$a[3],$junc_pos); 
     my $k = join "\t", @UMI; 
-    $cluster_hash{$k} = $a[4];
+    $UMI_cnt{$k} = $a[4];
   }
   
   my %nodes;     # key is the major node, value is an array storing merged nodes
   my %node_dist; # key is each node, value is the dist to major node
   my $full_dist = 999; 
-  my $max_cnt = max(values %cluster_hash);
-  foreach my $k (sort {$cluster_hash{$b} <=> $cluster_hash{$a}} keys %cluster_hash) { 
-    my @major_nodes = sort {$cluster_hash{$b} <=> $cluster_hash{$a}} keys %nodes;
-    if($#major_nodes == -1 || $cluster_hash{$k} >= $max_cnt * $major_UMI_rel_frac) {
+  my $max_cnt = max(values %UMI_cnt);
+  my $avg_cnt = mean(values %UMI_cnt);
+  foreach my $k (sort {$UMI_cnt{$b} <=> $UMI_cnt{$a}} keys %UMI_cnt) { 
+    my @major_nodes = sort {$UMI_cnt{$b} <=> $UMI_cnt{$a}} keys %nodes;
+    if($#major_nodes == -1 || $UMI_cnt{$k} >= $max_cnt * $major_UMI_rel_frac) {
       push @{$nodes{$k}},$k; 
       $node_dist{$k} = 0; 
     } else { 
+      last if($UMI_cnt{$k} < $avg_cnt * $remove_UMI_mean_frac);
       my $dist;
       my @aa = split /\t/, $k;
       for(my $i=0; $i<@major_nodes; $i++) { 
@@ -165,7 +171,7 @@ sub parse_each_cluster {
           my @bb = split /\t/, $all_nodes[$j]; 
           $dist = $node_dist{$all_nodes[$j]}; 
           # count
-          $dist += 1 if($cluster_hash{$k} >= $max_cnt * $sub_major_UMI_rel_frac);
+          $dist += 1 if($UMI_cnt{$k} >= $max_cnt * $sub_major_UMI_rel_frac);
           # splicing pattern
           $dist += $full_dist if($aa[3] ne $bb[3]); 
           # mapped postion
@@ -194,15 +200,15 @@ sub parse_each_cluster {
         $node_dist{$k} = 0;
       }
     }
-    print STDERR $k, "\t", $cluster_hash{$k}, "\t", $node_dist{$k}, "\n" if($debug_lvl > 1);
+    print STDERR $k, "\t", $UMI_cnt{$k}, "\t", $node_dist{$k}, "\n" if($debug_lvl > 1);
   }
   ## from top count to bottom: 
   ## 1. push highest but indepdent UMI into new UMI node
   ## 2. if within postion distance and within allowed UMI barcode distance and with the same splice pattern, then the UMI is not independent. 
   
   my @ret;  
-  foreach my $major (sort {$cluster_hash{$b} <=> $cluster_hash{$a}} keys %nodes) { 
-    my $cnt = sum(@cluster_hash{@{$nodes{$major}}});
+  foreach my $major (sort {$UMI_cnt{$b} <=> $UMI_cnt{$a}} keys %nodes) { 
+    my $cnt = sum(@UMI_cnt{@{$nodes{$major}}});
     push @ret, $major."\t".$cnt; 
   }
   return(\@ret);
@@ -233,6 +239,10 @@ sub next_kmers {
   delete($ret{$kmer}) if(exists($ret{$kmer}));
   my @r = sort keys(%ret); 
   return(\@r); 
+}
+
+sub mean {
+   return @_ ? sum(@_) / @_ : 0;
 }
 
 ## chr10_128035604_128036511_+
