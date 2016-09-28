@@ -3,7 +3,7 @@
 ########################################
 #
 # File Name:
-#   UMI_dedup.pl
+#   UMI_shuffle.pl
 # 
 # Description:
 #   deduplicate based on UMI
