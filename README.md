@@ -8,21 +8,21 @@ parsing RNA-seq data with Unique Molecular Identifiers (UMI)
 
 2. UMI barcode, following G, and 3' poly-(A) trimming
 
-```UMI_trim.pl yoursample.fastq.gz yoursample```
+    ```UMI_trim.pl yoursample.fastq.gz yoursample```
 
 3. Read mapping to genome
 
 4. Converting bam to bed
 
-```bamToBed -bed12 -i yoursample.bam | awk -vOFS='\t' '{split($4,a,/=/); $4=a[2]; print $0}' | gzip > yoursample.bed.gz```
+    ```bamToBed -bed12 -i yoursample.bam | awk -vOFS='\t' '{split($4,a,/=/); $4=a[2]; print $0}' | gzip > yoursample.bed.gz```
 
 5. UMI collapse
 
-```UMI_collapse.pl yoursample.bed.gz yoursample.UMI_collapsed.bed.gz```
+    ```UMI_collapse.pl yoursample.bed.gz yoursample.UMI_collapsed.bed.gz```
 
 6. UMI deduplicates
 
-```UMI_dedup.pl yoursample.UMI_collapsed.bed.gz yoursample.UMI_dedup.bed.gz```
+    ```UMI_dedup.pl yoursample.UMI_collapsed.bed.gz yoursample.UMI_dedup.bed.gz```
 
 ## Contact
 
